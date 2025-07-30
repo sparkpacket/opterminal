@@ -18,6 +18,10 @@
 
 <div id="users"><ul id="userlist"></ul></div>
 <div id="chat"></div>
+  <div id="privacy-note">
+  This site uses localStorage (cookies) to store information.
+</div>
+
 <input id="input" type="text" placeholder="Type a message..." autofocus autocomplete="off">
 
 <script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
@@ -184,6 +188,18 @@
     }[m]));
   }
 </script>
-
+<style>#privacy-note {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  font-size: 12px;
+  color: #888;
+  background-color: rgba(255, 255, 255, 0.6);
+  padding: 4px 8px;
+  border-radius: 4px;
+  z-index: 1000;
+  pointer-events: none; /* Makes it non-interactive */
+}
+</style>
 </body>
 </html>
