@@ -86,26 +86,11 @@
     updateUserList();
   });
 
-room.on('data', (data, member) => {
-  if (!member) return;
-
-  const name = getName(member);
-
-  if (data.type === 'html') {
-    addMessageHtml(name, data.content, member.clientData);
-  } else if (data.type === 'text') {
-    addMessage(name, data.content, member.clientData);
-  }
-
-  // STEP 3: Notification trigger
-  if (notificationsEnabled && document.hidden) {
-    new Notification(`${name} says:`, {
-      body: data.content,
-      icon: "/favicon.ico" // optional icon
-    });
-  }
-});
-
+  room.on('data', (data, member) => {
+    if (!member) return;
+    if (data.type === 'html') addMessageHtml(getName(member), data.content, member.clientData);
+    else if (data.type === 'text') addMessage(getName(member), data.content, member.clientData);
+  });
 
   function getName(member) {
     return member.clientData?.username || DEFAULT_NAME;
@@ -184,10 +169,6 @@ room.on('data', (data, member) => {
         case 'help':
           addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help');
           break;
-          if (content === "/notifs") {
-  toggleNotifications();
-  return;
-}
         default:
           addSystemMessage(`Unknown command: ${cmd}`);
       }
@@ -206,30 +187,6 @@ room.on('data', (data, member) => {
       "'": '&#039;'
     }[m]));
   }
-  let notificationsEnabled = false;
-
-function toggleNotifications() {
-  if (!("Notification" in window)) {
-    alert("This browser does not support notifications.");
-    return;
-  }
-
-  if (Notification.permission === "default") {
-    Notification.requestPermission().then(permission => {
-      if (permission === "granted") {
-        notificationsEnabled = !notificationsEnabled;
-        addSystemMessage("Notifications " + (notificationsEnabled ? "enabled" : "disabled") + ".");
-      } else {
-        addSystemMessage("Notifications denied.");
-      }
-    });
-  } else if (Notification.permission === "granted") {
-    notificationsEnabled = !notificationsEnabled;
-    addSystemMessage("Notifications " + (notificationsEnabled ? "enabled" : "disabled") + ".");
-  } else {
-    addSystemMessage("Notifications blocked in browser settings.");
-  }
-}
 </script>
 <style>
 #privacy-note {
@@ -245,31 +202,36 @@ function toggleNotifications() {
   pointer-events: none; /* Makes it non-interactive */
 }
 
-#discord-note {
+#top-buttons {
   position: fixed;
   top: 10px;
   right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 9999;
+}
+
+.top-button {
   background-color: #2b2b2b;
   color: white;
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 13px;
-  z-index: 9999;
-  box-shadow: 0 0 5px rgba(0,0,0,0.5);
-}
-
-#discord-note a {
-  color: #7289da;
+  text-align: center;
   text-decoration: none;
+  box-shadow: 0 0 5px rgba(0,0,0,0.5);
+  transition: background-color 0.2s;
 }
 
-#discord-note a:hover {
+.top-button:hover {
+  background-color: #3c3c3c;
   text-decoration: underline;
 }
 
-</style>
-<div id="discord-note">
-  <a href="https://discord.gg/kdwCbTjSvH" target="_blank">the wanderings discord server</a>
+<div id="top-buttons">
+  <a href="https://discord.gg/kdwCbTjSvH" target="_blank" class="top-button">Join our Discord</a>
+  <a href="https://sparkpacket.github.io" target="_blank" class="top-button">Main Coding Hub</a>
 </div>
 </body>
 </html>
