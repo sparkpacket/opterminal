@@ -86,11 +86,26 @@
     updateUserList();
   });
 
-  room.on('data', (data, member) => {
-    if (!member) return;
-    if (data.type === 'html') addMessageHtml(getName(member), data.content, member.clientData);
-    else if (data.type === 'text') addMessage(getName(member), data.content, member.clientData);
-  });
+room.on('data', (data, member) => {
+  if (!member) return;
+
+  const name = getName(member);
+
+  if (data.type === 'html') {
+    addMessageHtml(name, data.content, member.clientData);
+  } else if (data.type === 'text') {
+    addMessage(name, data.content, member.clientData);
+  }
+
+  // STEP 3: Notification trigger
+  if (notificationsEnabled && document.hidden) {
+    new Notification(`${name} says:`, {
+      body: data.content,
+      icon: "/favicon.ico" // optional icon
+    });
+  }
+});
+
 
   function getName(member) {
     return member.clientData?.username || DEFAULT_NAME;
@@ -169,6 +184,10 @@
         case 'help':
           addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help');
           break;
+          if (content === "/notifs") {
+  toggleNotifications();
+  return;
+}
         default:
           addSystemMessage(`Unknown command: ${cmd}`);
       }
@@ -187,6 +206,30 @@
       "'": '&#039;'
     }[m]));
   }
+  let notificationsEnabled = false;
+
+function toggleNotifications() {
+  if (!("Notification" in window)) {
+    alert("This browser does not support notifications.");
+    return;
+  }
+
+  if (Notification.permission === "default") {
+    Notification.requestPermission().then(permission => {
+      if (permission === "granted") {
+        notificationsEnabled = !notificationsEnabled;
+        addSystemMessage("Notifications " + (notificationsEnabled ? "enabled" : "disabled") + ".");
+      } else {
+        addSystemMessage("Notifications denied.");
+      }
+    });
+  } else if (Notification.permission === "granted") {
+    notificationsEnabled = !notificationsEnabled;
+    addSystemMessage("Notifications " + (notificationsEnabled ? "enabled" : "disabled") + ".");
+  } else {
+    addSystemMessage("Notifications blocked in browser settings.");
+  }
+}
 </script>
 <style>
 #privacy-note {
