@@ -202,36 +202,30 @@
   pointer-events: none; /* Makes it non-interactive */
 }
 
-#top-buttons {
+#discord-note {
   position: fixed;
   top: 10px;
   right: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  z-index: 9999;
-}
-
-.top-button {
   background-color: #2b2b2b;
   color: white;
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 13px;
-  text-align: center;
-  text-decoration: none;
+  z-index: 9999;
   box-shadow: 0 0 5px rgba(0,0,0,0.5);
-  transition: background-color 0.2s;
 }
 
-.top-button:hover {
-  background-color: #3c3c3c;
+#discord-note a {
+  color: #7289da;
+  text-decoration: none;
+}
+
+#discord-note a:hover {
   text-decoration: underline;
 }
 
-<div id="top-buttons">
-  <a href="https://discord.gg/kdwCbTjSvH" target="_blank" class="top-button">Join our Discord</a>
-  <a href="https://sparkpacket.github.io" target="_blank" class="top-button">Main Coding Hub</a>
+<div id="discord-note">
+  <a href="https://discord.gg/kdwCbTjSvH" target="_blank">Join our Discord</a>
 </div>
 </body>
 </html>
