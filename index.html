@@ -17,7 +17,17 @@
 <body>
 
 <div id="users"><ul id="userlist"></ul></div>
+  <div id="chat-bg" style="position:absolute; top:0; left:0; width:100%; height:80vh; background-size:cover; background-position:center; z-index:-1;"></div>
 <div id="chat"></div>
+  <div id="wallpaper-menu" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#111; color:#0f0; padding:10px; border:1px solid #0f0; z-index:999;">
+  <h3>Wallpaper Menu</h3>
+  <input type="file" id="wallpaper-file"><br><br>
+  <input type="text" id="wallpaper-url" placeholder="Image/GIF URL"><br><br>
+  <input type="text" id="wallpaper-name" placeholder="Wallpaper name" value="wallpaper"><br><br>
+  <button onclick="setWallpaper()">Set Wallpaper</button>
+  <button onclick="closeWallpaperMenu()">Close</button>
+  <div id="wallpaper-preview" style="margin-top:10px;"></div>
+</div>
   <div id="privacy-note">
   This site uses localStorage (cookies) to store information.
 </div>
@@ -68,6 +78,11 @@
   room.on('members', m => {
     members = m;
     updateUserList();
+    const savedWallpaper = localStorage.getItem('wallpaper');
+if (savedWallpaper) {
+  document.getElementById('chat-bg').style.backgroundImage = `url("${savedWallpaper}")`;
+}
+
     addSystemMessage(`${username} joined`);
   });
 
@@ -134,6 +149,7 @@
       return `<li style="font-family:${fname}; ${style}">${escapeHtml(m.clientData.username || DEFAULT_NAME)}</li>`;
     }).join('');
   }
+  
 
   input.addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
@@ -169,6 +185,9 @@
         case 'help':
           addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help');
           break;
+          case 'wallpaper':
+  showWallpaperMenu();
+  break;
         default:
           addSystemMessage(`Unknown command: ${cmd}`);
       }
@@ -178,6 +197,39 @@
 
     input.value = '';
   });
+function showWallpaperMenu() {
+  document.getElementById('wallpaper-menu').style.display = 'block';
+}
+
+function closeWallpaperMenu() {
+  document.getElementById('wallpaper-menu').style.display = 'none';
+}
+
+function setWallpaper() {
+  const fileInput = document.getElementById('wallpaper-file');
+  const urlInput = document.getElementById('wallpaper-url').value;
+  const nameInput = document.getElementById('wallpaper-name').value || 'wallpaper';
+  let src = '';
+
+  if (fileInput.files[0]) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      src = e.target.result;
+      applyWallpaper(src, nameInput);
+    };
+    reader.readAsDataURL(fileInput.files[0]);
+  } else if (urlInput) {
+    src = urlInput;
+    applyWallpaper(src, nameInput);
+  }
+}
+
+function applyWallpaper(src, name) {
+  document.getElementById('chat-bg').style.backgroundImage = `url("${src}")`;
+  localStorage.setItem('wallpaper', src);
+  localStorage.setItem('wallpaperName', name);
+  document.getElementById('wallpaper-preview').innerText = `Set "${name}"`;
+}
 
   function escapeHtml(s) {
     return s.replace(/[&<"']/g, m => ({
