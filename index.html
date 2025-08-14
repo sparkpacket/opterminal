@@ -27,7 +27,7 @@
 <script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
 <script>
   const ROOM_ID = 'tFqPkwVI4ngT7agV';
-  const CHAT_ROOM = 'observable-terminal';
+  let currentRoom = 'observable-default';
   const DEFAULT_NAME = 'unregistered';
 
   // Only set username from localStorage if exists; otherwise default
@@ -59,7 +59,47 @@
     clientId = drone.clientId;
   });
 
-  const room = drone.subscribe(CHAT_ROOM);
+  let room = drone.subscribe(currentRoom);
+
+function subscribeToRoom(roomName) {
+  // Unsubscribe old room
+  if (room) room.unsubscribe();
+
+  currentRoom = roomName;
+  room = drone.subscribe(currentRoom);
+
+  room.on('open', err => {
+    if (err) console.error(err);
+  });
+
+  room.on('members', m => {
+    members = m;
+    updateUserList();
+    addSystemMessage(`Switched to room: ${currentRoom}`);
+  });
+
+  room.on('member_join', member => {
+    members.push(member);
+    updateUserList();
+    addSystemMessage(`${getName(member)} joined at ${getTime()}`);
+  });
+
+  room.on('member_leave', ({ id }) => {
+    const i = members.findIndex(m => m.id === id);
+    if (i !== -1) {
+      addSystemMessage(`${getName(members[i])} left at ${getTime()}`);
+      members.splice(i,1);
+    }
+    updateUserList();
+  });
+
+  room.on('data', (data, member) => {
+    if (!member) return;
+    if (data.type === 'html') addMessageHtml(getName(member), data.content, member.clientData);
+    else if (data.type === 'text') addMessage(getName(member), data.content, member.clientData);
+  });
+}
+
 
   room.on('open', err => {
     if (err) console.error(err);
@@ -169,6 +209,11 @@
         case 'help':
           addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help');
           break;
+          case 'room':
+  if (!arg) return addSystemMessage('Usage: /room room_name');
+  const formattedRoom = 'observable-' + arg.replace(/\s+/g,'_');
+  subscribeToRoom(formattedRoom);
+  break;
         default:
           addSystemMessage(`Unknown command: ${cmd}`);
       }
