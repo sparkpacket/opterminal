@@ -75,7 +75,7 @@ function subscribeToRoom(roomName) {
   room.on('members', m => {
     members = m;
     updateUserList();
-    addSystemMessage(`Switched to room: ${currentRoom}`);
+    addSystemMessage(`Switched to room: ${displayRoomName(currentRoom)}`);
   });
 
   room.on('member_join', member => {
@@ -155,7 +155,11 @@ function subscribeToRoom(roomName) {
     chat.appendChild(msg);
     chat.scrollTop = chat.scrollHeight;
   }
-
+  
+  function displayRoomName(room) {
+  return room.replace(/^observable-/, '').replace(/_/g, ' ');
+  }
+  
   function addSystemMessage(text) {
     const sys = document.createElement('div');
     sys.className = 'system';
@@ -207,12 +211,17 @@ function subscribeToRoom(roomName) {
           chat.innerHTML = '';
           break;
         case 'help':
-          addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help');
+          addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help, /room, /default');
+          addSystemMessage('We are still working on the project! Dont think it stops here.');
           break;
           case 'room':
-  if (!arg) return addSystemMessage('Usage: /room room_name');
+  if (!arg) return addSystemMessage('Usage: /room room name. To return just do /default.');
   const formattedRoom = 'observable-' + arg.replace(/\s+/g,'_');
   subscribeToRoom(formattedRoom);
+  break;
+        case 'default':
+  if (!arg) return addSystemMessage('Usage: /default. Nothing else.');
+  subscribeToRoom('observable-default');
   break;
         default:
           addSystemMessage(`Unknown command: ${cmd}`);
