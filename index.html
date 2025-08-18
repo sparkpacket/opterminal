@@ -220,7 +220,7 @@ function subscribeToRoom(roomName) {
   subscribeToRoom(formattedRoom);
   break;
         case 'default':
-  if (!arg) return addSystemMessage('Usage: /default. Nothing else.');
+  if (arg) return addSystemMessage('Usage: /default. Nothing else.');
   subscribeToRoom('observable-default');
   break;
         default:
