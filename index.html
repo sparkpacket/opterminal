@@ -281,5 +281,103 @@ function subscribeToRoom(roomName) {
 <div id="discord-note">
   <a href="https://discord.gg/kdwCbTjSvH" target="_blank">Join our Discord</a>
 </div>
+  <script>
+  // --- SPAI settings ---
+  const SPAI_NAME = "spai(sparkpacket ai)";
+  const SPAI_COLOR = "#6A287E";
+  const SPAI_ID = "spai";
+  const MARKOV_ORDER = 3; // 3-char sequences
+  const RESPONSE_DELAY = 1000 + Math.random() * 1500; // simulate typing
+
+  // --- corpus & Markov chain ---
+  let corpus = [];
+  let markovChain = {};
+
+  function loadCorpus() {
+    const saved = localStorage.getItem("spai_corpus");
+    if (saved) corpus = JSON.parse(saved) || [];
+    rebuildMarkovChain();
+  }
+
+  function saveCorpus() {
+    localStorage.setItem("spai_corpus", JSON.stringify(corpus));
+  }
+
+  function addMessageToCorpus(msg) {
+    if (!msg || msg.trim() === "") return;
+    corpus.push(msg);
+    saveCorpus();
+    updateMarkovChain(msg);
+    // optional: broadcast small snippet for shared learning
+    if (Math.random() < 0.1) { // 10% chance to broadcast
+      drone.publish({ room: currentRoom, message: { type: "spai_corpus", content: msg } });
+    }
+  }
+
+  function rebuildMarkovChain() {
+    markovChain = {};
+    corpus.forEach(msg => updateMarkovChain(msg));
+  }
+
+  function updateMarkovChain(msg) {
+    for (let i = 0; i <= msg.length - MARKOV_ORDER; i++) {
+      const key = msg.slice(i, i + MARKOV_ORDER);
+      const nextChar = msg.charAt(i + MARKOV_ORDER);
+      if (!markovChain[key]) markovChain[key] = [];
+      if (nextChar) markovChain[key].push(nextChar);
+    }
+  }
+
+  function generateText(seed, length = 50) {
+    if (corpus.length === 0) return "hmmm...";
+    let result = seed || corpus[Math.floor(Math.random() * corpus.length)].slice(0, MARKOV_ORDER);
+    while (result.length < length) {
+      const key = result.slice(-MARKOV_ORDER);
+      const nextChars = markovChain[key];
+      if (!nextChars || nextChars.length === 0) break;
+      const nextChar = nextChars[Math.floor(Math.random() * nextChars.length)];
+      result += nextChar;
+    }
+    return result;
+  }
+
+  // --- SPAI join & listening ---
+  function joinAsSPAI() {
+    // Immediately set SPAI info
+    drone.publish({ room: currentRoom, message: { type: 'text', content: `/name ${SPAI_NAME}` } });
+    drone.publish({ room: currentRoom, message: { type: 'text', content: `/color ${SPAI_COLOR}` } });
+
+    // Listen to all messages
+    room.on('data', (data, member) => {
+      if (!member) return;
+
+      // Learning: save all human messages
+      if (member.clientData.username !== SPAI_NAME) {
+        addMessageToCorpus(data.content);
+      }
+
+      // Handle SPAI commands
+      if (data.content.startsWith(".spai") && member.clientData.username !== SPAI_NAME) {
+        const userSeed = data.content.slice(5).trim();
+        if (!userSeed) return;
+        setTimeout(() => {
+          const reply = generateText(userSeed);
+          drone.publish({ room: currentRoom, message: { type: "text", content: reply } });
+          addMessageToCorpus(reply);
+        }, RESPONSE_DELAY);
+      }
+
+      // Handle shared corpus from other SPAIs
+      if (data.type === "spai_corpus" && member.clientData.username !== SPAI_NAME) {
+        addMessageToCorpus(data.content);
+      }
+    });
+  }
+
+  // --- initialization ---
+  loadCorpus();
+  setTimeout(joinAsSPAI, 1000);
+</script>
+
 </body>
 </html>
