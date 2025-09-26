@@ -212,8 +212,12 @@ function subscribeToRoom(roomName) {
           chat.innerHTML = '';
           break;
         case 'help':
-          addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help, /room, /default');
+          addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help, /room, /default /hub');
           addSystemMessage('We are still working on the project! Dont think it stops here.');
+          break;
+                case 'hub':
+          if (arg) return addSystemMessage('Usage: /hub. Nothing else.');
+          window.location.href = 'https://sparkpacket.github.io';
           break;
           case 'room':
   if (!arg) return addSystemMessage('Usage: /room room name. To return just do /default.');
