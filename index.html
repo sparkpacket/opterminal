@@ -25,7 +25,7 @@
       background:#000;
     }
     #userlist {
-      display: grid;
+      display: block;
       grid-auto-flow: column;
       grid-template-rows: repeat(auto-fill, minmax(14px, auto));
       gap: 2px 20px;
@@ -242,26 +242,56 @@
 
   // Dynamic user grid layout
   function updateUserList() {
-    const userlistEl = document.getElementById("userlist");
-    let perCol = 5;
-    const maxCols = Math.ceil(members.length / perCol);
+  const userlistEl = document.getElementById("userlist");
+  userlistEl.innerHTML = "";
 
-    // If columns get too wide, bump perCol up
-    if (maxCols > 5) {
-      perCol = Math.ceil(members.length / 5);
+  const perCol = 5;
+  const names = members.map(m => {
+    const isSelf = m.id === clientId;
+    const style = isSelf
+      ? 'color:red; font-weight:bold;'
+      : `color:${m.clientData.color}`;
+    const fname = m.clientData?.font || font;
+    const uname = m.clientData?.username || DEFAULT_NAME;
+    return { uname, style, fname };
+  });
+
+  let row = 0;
+  let maxLen = 0;
+  let currentColumn = document.createElement("ul");
+  currentColumn.style.display = "inline-block";
+  currentColumn.style.verticalAlign = "top";
+  currentColumn.style.marginRight = "1ch";
+  currentColumn.style.listStyle = "disc";
+  currentColumn.style.paddingLeft = "20px"; // indent for bullets
+
+  names.forEach((u, i) => {
+    const li = document.createElement("li");
+    li.style.cssText = `font-family:${u.fname}; ${u.style}`;
+    li.textContent = u.uname;
+    currentColumn.appendChild(li);
+
+    if (u.uname.length > maxLen) maxLen = u.uname.length;
+
+    row++;
+    if (row >= perCol || i === names.length - 1) {
+      currentColumn.style.minWidth = maxLen + 1 + "ch";
+      userlistEl.appendChild(currentColumn);
+
+      // reset for next col
+      row = 0;
+      maxLen = 0;
+      if (i !== names.length - 1) {
+        currentColumn = document.createElement("ul");
+        currentColumn.style.display = "inline-block";
+        currentColumn.style.verticalAlign = "top";
+        currentColumn.style.marginRight = "1ch";
+        currentColumn.style.listStyle = "disc";
+        currentColumn.style.paddingLeft = "20px";
+      }
     }
-
-    userlistEl.style.gridTemplateRows = `repeat(${perCol}, auto)`;
-
-    userlistEl.innerHTML = members.map(m => {
-      const isSelf = m.id === clientId;
-      const style = isSelf
-        ? 'color:red; font-weight:bold;'
-        : `color:${m.clientData.color}`;
-      const fname = m.clientData?.font || font;
-      return `<li style="font-family:${fname}; ${style}">${escapeHtml(m.clientData.username || DEFAULT_NAME)}</li>`;
-    }).join('');
-  }
+  });
+}
 
   input.addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
