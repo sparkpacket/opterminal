@@ -26,28 +26,18 @@
 
 <script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
 <script>
-  const ROOM_ID = 'tFqPkwVI4ngT7agV';
+  const ROOM_ID = 'YlACLLtfd8xkDp0D';
   let currentRoom = 'observable-default';
   const DEFAULT_NAME = 'unregistered';
 
-  // Only set username from localStorage if exists; otherwise default
   let username = localStorage.getItem('username') || DEFAULT_NAME;
   let color = localStorage.getItem('color') || '#0f0';
   let font = localStorage.getItem('font') || 'monospace';
 
   function setUserSetting(type, value) {
-    if (type === 'name') {
-      localStorage.setItem('username', value);
-      username = value;
-    }
-    if (type === 'color') {
-      localStorage.setItem('color', value);
-      color = value;
-    }
-    if (type === 'font') {
-      localStorage.setItem('font', value);
-      font = value;
-    }
+    if (type === 'name') localStorage.setItem('username', username = value);
+    if (type === 'color') localStorage.setItem('color', color = value);
+    if (type === 'font') localStorage.setItem('font', font = value);
   }
 
   const drone = new Scaledrone(ROOM_ID, { data: { username, color, font } });
@@ -59,189 +49,169 @@
     clientId = drone.clientId;
   });
 
-  let room = drone.subscribe(currentRoom);
+  let room;
+  function subscribeToRoom(roomName) {
+    if (room) room.unsubscribe();
+    currentRoom = roomName;
+    room = drone.subscribe(currentRoom);
 
-function subscribeToRoom(roomName) {
-  // Unsubscribe old room
-  if (room) room.unsubscribe();
-
-  currentRoom = roomName;
-  room = drone.subscribe(currentRoom);
-
-  room.on('open', err => {
-    if (err) console.error(err);
-  });
-
-  room.on('members', m => {
-    members = m;
-    updateUserList();
-    addSystemMessage(`Switched to room: ${displayRoomName(currentRoom)}`);
-  });
-
-  room.on('member_join', member => {
-    members.push(member);
-    updateUserList();
-    addSystemMessage(`${getName(member)} joined at ${getTime()}`);
-  });
-
-  room.on('member_leave', ({ id }) => {
-    const i = members.findIndex(m => m.id === id);
-    if (i !== -1) {
-      addSystemMessage(`${getName(members[i])} left at ${getTime()}`);
-      members.splice(i,1);
-    }
-    updateUserList();
-  });
-
-  room.on('data', (data, member) => {
-    if (!member) return;
-    if (data.type === 'html') addMessageHtml(getName(member), data.content, member.clientData);
-    else if (data.type === 'text') addMessage(getName(member), data.content, member.clientData);
-  });
-}
-
-
-  room.on('open', err => {
-    if (err) console.error(err);
-  });
-
-  room.on('members', m => {
-    members = m;
-    updateUserList();
-    addSystemMessage(`${username} joined`);
-  });
-
-  room.on('member_join', member => {
-    members.push(member);
-    updateUserList();
-    addSystemMessage(`${getName(member)} joined at ${getTime()}`);
-  });
-
-  room.on('member_leave', ({ id }) => {
-    const i = members.findIndex(m => m.id === id);
-    if (i !== -1) {
-      addSystemMessage(`${getName(members[i])} left at ${getTime()}`);
-      members.splice(i,1);
-    }
-    updateUserList();
-  });
-
-  room.on('data', (data, member) => {
-    if (!member) return;
-    if (data.type === 'html') addMessageHtml(getName(member), data.content, member.clientData);
-    else if (data.type === 'text') addMessage(getName(member), data.content, member.clientData);
-  });
-
-  function getName(member) {
-    return member.clientData?.username || DEFAULT_NAME;
+    room.on('open', err => { if (err) console.error(err); });
+    room.on('members', m => { members = m; updateUserList(); addSystemMessage(`Switched to ${displayRoomName(currentRoom)}`); });
+    room.on('member_join', m => { members.push(m); updateUserList(); addSystemMessage(`${getName(m)} joined at ${getTime()}`); });
+    room.on('member_leave', ({id}) => {
+      const i = members.findIndex(m => m.id === id);
+      if (i !== -1) addSystemMessage(`${getName(members[i])} left at ${getTime()}`);
+      members = members.filter(m => m.id !== id);
+      updateUserList();
+    });
+    room.on('data', (data, member) => {
+      if (!member) return;
+      if (data.type === 'html') addMessageHtml(getName(member), data.content, member.clientData);
+      else if (data.type === 'file') addFileMessage(getName(member), data, member.clientData);
+      else if (data.type === 'text') addMessage(getName(member), data.content, member.clientData);
+    });
   }
+  subscribeToRoom(currentRoom);
 
-  function getTime() {
-    return new Date().toLocaleTimeString();
-  }
+  function getName(m) { return m.clientData?.username || DEFAULT_NAME; }
+  function getTime() { return new Date().toLocaleTimeString(); }
 
-  function addMessage(name, message, data={}) {
-    const msg = document.createElement('div');
-    msg.className = 'message';
-    msg.innerHTML = `<span class="username" style="color:${data.color}; font-family:${data.font}">${escapeHtml(name)}:</span> <span style="font-family:${data.font}">${escapeHtml(message)}</span>`;
-    chat.appendChild(msg);
-    chat.scrollTop = chat.scrollHeight;
+  function addMessage(name, msg, data={}) {
+    const el = document.createElement('div');
+    el.className = 'message';
+    el.innerHTML = `<span class="username" style="color:${data.color};font-family:${data.font}">${escapeHtml(name)}:</span> <span>${escapeHtml(msg)}</span>`;
+    chat.appendChild(el); chat.scrollTop = chat.scrollHeight;
   }
 
   function addMessageHtml(name, html, data={}) {
-    const msg = document.createElement('div');
-    msg.className = 'message';
-    msg.innerHTML = `<span class="username" style="color:${data.color}; font-family:${data.font}">${escapeHtml(name)}:</span> <span style="font-family:${data.font}">${html}</span>`;
-    chat.appendChild(msg);
-    chat.scrollTop = chat.scrollHeight;
+    const el = document.createElement('div');
+    el.className = 'message';
+    el.innerHTML = `<span class="username" style="color:${data.color};font-family:${data.font}">${escapeHtml(name)}:</span> ${html}`;
+    chat.appendChild(el); chat.scrollTop = chat.scrollHeight;
   }
-  
-  function displayRoomName(room) {
-  return room.replace(/^observable-/, '').replace(/_/g, ' ');
-  }
-  
-  function addSystemMessage(text) {
-    const sys = document.createElement('div');
-    sys.className = 'system';
-    sys.textContent = `[SYSTEM] ${text}`;
-    chat.appendChild(sys);
+
+  function addFileMessage(name, data, clientData={}) {
+    const el = document.createElement('div');
+    el.className = 'message';
+    const label = `<span class="username" style="color:${clientData.color};font-family:${clientData.font}">${escapeHtml(name)}:</span> `;
+    const { fileName, fileType, fileData } = data;
+
+    let content;
+    if (fileType.startsWith('image/')) {
+      content = `<img src="${fileData}" alt="${escapeHtml(fileName)}" style="max-width:200px;max-height:200px;border:1px solid #0f0;margin-top:4px;">`;
+    } else if (fileType.startsWith('video/')) {
+      content = `<video controls style="max-width:250px;max-height:200px;margin-top:4px;"><source src="${fileData}" type="${fileType}"></video>`;
+    } else {
+      content = `<a href="${fileData}" download="${escapeHtml(fileName)}" style="color:#0ff;">${escapeHtml(fileName)}</a>`;
+    }
+
+    el.innerHTML = label + content;
+    chat.appendChild(el);
     chat.scrollTop = chat.scrollHeight;
   }
 
-  function updateUserList() {
-    userlist.innerHTML = members.map(m => {
-      const isSelf = m.id === clientId;
-      const style = isSelf
-        ? 'color:red; font-weight:bold;'
-        : `color:${m.clientData.color}`;
-      const fname = m.clientData?.font || font;
-      return `<li style="font-family:${fname}; ${style}">${escapeHtml(m.clientData.username || DEFAULT_NAME)}</li>`;
-    }).join('');
+  function addSystemMessage(txt) {
+    const el = document.createElement('div');
+    el.className = 'system';
+    el.textContent = `[SYSTEM] ${txt}`;
+    chat.appendChild(el);
+    chat.scrollTop = chat.scrollHeight;
   }
+
+  function displayRoomName(r) { return r.replace(/^observable-/, '').replace(/_/g, ' '); }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<"']/g, m => ({
+      '&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#039;'
+    }[m]));
+  }
+
+  function updateUserList() {
+    const list = document.getElementById("userlist");
+    list.innerHTML = "";
+    members.forEach(m => {
+      const li = document.createElement("li");
+      const isSelf = m.id === clientId;
+      li.style = `color:${isSelf ? 'red' : m.clientData.color};font-family:${m.clientData.font}`;
+      li.textContent = m.clientData.username || DEFAULT_NAME;
+      list.appendChild(li);
+    });
+  }
+
+  const input = document.getElementById("input");
+  const chat = document.getElementById("chat");
+  const privacyNote = document.getElementById("privacy-note");
 
   input.addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     const val = input.value.trim();
     if (!val) return;
 
-    if (val.startsWith('/')) {
-      const [cmd, ...args] = val.slice(1).split(' ');
-      const arg = args.join(' ').trim();
-      switch(cmd) {
-        case 'name':
-          if (!arg) return addSystemMessage('Usage: /name yourName');
-          setUserSetting('name', arg);
-          location.reload();
-          break;
-        case 'color':
-          if (!arg) return addSystemMessage('Usage: /color #hex');
-          setUserSetting('color', arg);
-          location.reload();
-          break;
-        case 'font':
-          if (!arg) return addSystemMessage('Usage: /font fontName');
-          setUserSetting('font', arg);
-          location.reload();
-          break;
-        case 'html':
-          if (!arg) return addSystemMessage('Usage: /html <raw HTML>');
-          drone.publish({ room: currentRoom, message:{ type:'html', content:arg } });
-          break;
-        case 'clear':
-          chat.innerHTML = '';
-          break;
-        case 'help':
-          addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help, /room, /default');
-          addSystemMessage('We are still working on the project! Dont think it stops here.');
-          break;
-          case 'room':
-  if (!arg) return addSystemMessage('Usage: /room room name. To return just do /default.');
-  const formattedRoom = 'observable-' + arg.replace(/\s+/g,'_');
-  subscribeToRoom(formattedRoom);
-  break;
-        case 'default':
-  if (arg) return addSystemMessage('Usage: /default. Nothing else.');
-  subscribeToRoom('observable-default');
-  break;
-        default:
-          addSystemMessage(`Unknown command: ${cmd}`);
-      }
-    } else {
-      drone.publish({ room: currentRoom, message:{ type:'text', content:val } });
-    }
-
+    if (val.startsWith('/')) handleCommand(val);
+    else drone.publish({ room: currentRoom, message: { type:'text', content:val } });
     input.value = '';
+    privacyNote.classList.remove("shrink");
   });
 
-  function escapeHtml(s) {
-    return s.replace(/[&<"']/g, m => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '"': '&quot;',
-      "'": '&#039;'
-    }[m]));
+  function handleCommand(val) {
+    const [cmd, ...args] = val.slice(1).split(' ');
+    const arg = args.join(' ').trim();
+    switch(cmd) {
+      case 'name': if (arg){ setUserSetting('name', arg); location.reload(); } break;
+      case 'color': if (arg){ setUserSetting('color', arg); location.reload(); } break;
+      case 'font': if (arg){ setUserSetting('font', arg); location.reload(); } break;
+      case 'clear': chat.innerHTML=''; break;
+      case 'html': if (arg){ drone.publish({ room: currentRoom, message:{type:'html', content:arg}});} break;
+      case 'room': if (arg){ subscribeToRoom('observable-' + arg.replace(/\s+/g,'_')); } break;
+      case 'default': subscribeToRoom('observable-default'); break;
+      case 'help': addSystemMessage('Commands: /name /color /font /html /clear /room /default'); break;
+      default: addSystemMessage(`Unknown command: ${cmd}`);
+    }
   }
+
+  // fade privacy note while typing
+  input.addEventListener("input", () => {
+    privacyNote.classList.toggle("shrink", input.value.trim().length > 0);
+  });
+  input.addEventListener("blur", () => privacyNote.classList.remove("shrink"));
+
+  // --- FILE UPLOAD SUPPORT ---
+  const inputContainer = document.getElementById("input-container");
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.style.display = "none";
+  const fileButton = document.createElement("button");
+  fileButton.textContent = "upload";
+  fileButton.style.cssText = "background:none;border:none;color:#0f0;cursor:pointer;font-size:18px;position:absolute;left:10px;bottom:8px;";
+  inputContainer.appendChild(fileButton);
+  inputContainer.appendChild(fileInput);
+
+  // Adjust input padding for button
+  input.style.paddingLeft = "35px";
+
+  fileButton.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result;
+      drone.publish({
+        room: currentRoom,
+        message: {
+          type: 'file',
+          fileName: file.name,
+          fileType: file.type,
+          fileData: base64
+        }
+      });
+    };
+    reader.readAsDataURL(file);
+    fileInput.value = '';
+  });
 </script>
+
 <style>
 #privacy-note {
   position: fixed;
