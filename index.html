@@ -32,7 +32,10 @@ body { margin:0; font-family:monospace; background:#000; color:#0f0; display:fle
 <script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
 <script>
 const ROOM_ID = 'YlACLLtfd8xkDp0D';
-let username = localStorage.getItem('username') || 'unregistered';
+const DEFAULT_NAME = 'unregistered';
+const ADMIN_ROOM = 'observable_adminroom';
+const ADMIN_REDIRECT = 'observable_adminroom0';
+let username = localStorage.getItem('username') || DEFAULT_NAME;
 let color = localStorage.getItem('color') || '#0f0';
 let font = localStorage.getItem('font') || 'monospace';
 let currentRoom = 'observable-default';
@@ -41,20 +44,16 @@ let clientId = null;
 
 // --- TEMPBAN TRACKER ---
 let tempbannedUsers = {}; // { username: true }
-let fakeUsers = {};       // { username: Scaledrone instance for tempban/fake user }
+let virtualAdminUsers = {}; // tracks virtual fake users: adminpanel + tempbans
 
-// --- UTILITY FUNCTIONS ---
-function isAdmin(name) {
-  const lower = name.toLowerCase();
-  return lower === 'fredoka' || lower.startsWith('sparkpacket ');
-}
-
+// --- HELPER FUNCTIONS ---
 function escapeHtml(s) { return s.replace(/[&<"']/g, m=>({'&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#039;'}[m])); }
 function getTime() { return new Date().toLocaleTimeString(); }
 function addSystemMessage(msg) { const el = document.createElement('div'); el.className='system'; el.textContent='[SYSTEM] '+msg; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
 function displayRoomName(room) { return room.replace(/^observable-/,'').replace(/_/g,' '); }
+function isAdmin(name) { const lower = name.toLowerCase(); return lower === 'fredoka' || lower.startsWith('sparkpacket '); }
 
-// --- LOCAL STORAGE USER SETTINGS ---
+// --- LOCAL STORAGE SETTINGS ---
 function setUserSetting(type,value){
   if(type==='name'){ localStorage.setItem('username',value); username=value; }
   if(type==='color'){ localStorage.setItem('color',value); color=value; }
@@ -63,70 +62,15 @@ function setUserSetting(type,value){
 
 // --- INIT DRONE ---
 const drone = new Scaledrone(ROOM_ID, { data:{ username, color, font } });
-drone.on('open', err => { if(err) return console.error(err); clientId = drone.clientId; });
+drone.on('open', err => { if(err) return console.error(err); clientId = drone.clientId; subscribeToRoom(currentRoom); ensureAdminPanel(); });
 
-// --- ADMIN ROOM MIRROR ---
-const adminRoomName = 'observable_adminroom';
-const adminRedirectRoom = 'observable_adminroom0';
-let adminRoom = drone.subscribe(adminRoomName);
-
-// Ensure adminpanel fake user exists
-function ensureAdminPanel() {
-  if(fakeUsers['adminpanel']) return;
-  const fakeAdminPanel = new Scaledrone(ROOM_ID, { data:{ username:'adminpanel', color:'#f0f', font:'monospace' }});
-  fakeUsers['adminpanel'] = fakeAdminPanel;
-  const room = fakeAdminPanel.subscribe(adminRoomName);
-  room.on('data',(data,member)=>{
-    if(!data.type || !data.content) return;
-    const msg = data.content.trim();
-    if(msg.startsWith('.tempban ')){
-      const target = msg.slice(9).trim();
-      if(!target) return;
-      tempbanUser(target);
-    } else if(msg.startsWith('.untempban ')){
-      const target = msg.slice(11).trim();
-      if(fakeUsers['tempban_'+target]) {
-        fakeUsers['tempban_'+target].close(); delete fakeUsers['tempban_'+target]; delete tempbannedUsers[target];
-        addSystemMessage(`${target} has been untempbanned.`);
-      }
-    }
-  });
-}
-
-// --- TEMPBAN FUNCTION ---
-function tempbanUser(targetName){
-  if(!targetName) return;
-  if(tempbannedUsers[targetName]) return;
-  const targetMember = members.find(m=>m.clientData?.username===targetName);
-  let colorValue = '#888';
-  if(targetMember) colorValue = targetMember.clientData.color || colorValue;
-
-  tempbannedUsers[targetName]=true;
-
-  // Create fake user
-  const fake = new Scaledrone(ROOM_ID, { data:{ username:'tempban_'+targetName, color:colorValue, font:'monospace'} });
-  fakeUsers['tempban_'+targetName] = fake;
-  const room = fake.subscribe(adminRoomName);
-  room.on('data',(data,member)=>{
-    if(!data.type || !data.content) return;
-    const msg = data.content.trim();
-    if(msg === `.untempban ${targetName}`){
-      fake.close(); delete fakeUsers['tempban_'+targetName]; delete tempbannedUsers[targetName];
-      addSystemMessage(`${targetName} has been untempbanned.`);
-    }
-  });
-  addSystemMessage(`${targetName} has been tempbanned.`);
-}
-
-// --- SUBSCRIBE FUNCTION ---
-let room = drone.subscribe(currentRoom);
+// --- SUBSCRIBE TO ROOM ---
+let room = null;
 function subscribeToRoom(roomName){
   if(room) room.unsubscribe();
+  // Redirect non-admins from adminroom
+  if(roomName===ADMIN_ROOM && !isAdmin(username)) roomName = ADMIN_REDIRECT;
   currentRoom = roomName;
-
-  // REDIRECT CHECK
-  if(roomName===adminRoomName && !isAdmin(username)) roomName = adminRedirectRoom;
-
   room = drone.subscribe(roomName);
   room.on('open', err=>{ if(err) console.error(err); });
   room.on('members', m=>{ members=m; updateUserList(); addSystemMessage(`Switched to room: ${displayRoomName(currentRoom)}`); });
@@ -134,29 +78,59 @@ function subscribeToRoom(roomName){
   room.on('member_leave', ({id})=>{ const i=members.findIndex(x=>x.id===id); if(i!==-1){ addSystemMessage(`${members[i].clientData.username} left at ${getTime()}`); members.splice(i,1);} updateUserList(); });
   room.on('data', (data,member)=>{
     if(!member) return;
-    if(tempbannedUsers[member.clientData?.username]) return; // blocked if tempbanned
-    if(data.type==='text') addMessage(member.clientData.username, data.content, member.clientData);
-    else if(data.type==='html') addMessageHtml(member.clientData.username, data.content, member.clientData);
-
-    // FORK TO ADMINROOM
-    if(adminRoomName!==currentRoom) adminRoom.publish({ room:adminRoomName, message:{ type:'text', content:`[${displayRoomName(currentRoom)}] ${member.clientData.username}: ${data.content}` } });
+    const sender = member.clientData.username;
+    // Block tempbanned users
+    if(tempbannedUsers[sender]) return;
+    // Display normally
+    if(data.type==='text') addMessage(sender,data.content,member.clientData);
+    else if(data.type==='html') addMessageHtml(sender,data.content,member.clientData);
+    // Fork to adminroom
+    if(currentRoom !== ADMIN_ROOM) {
+      drone.publish({ room:ADMIN_ROOM, message:{ type:'text', content:`[${displayRoomName(currentRoom)}] ${sender}: ${data.content}` } });
+    }
   });
+}
+
+// --- ADMIN PANEL (virtual fake user inside same connection) ---
+function ensureAdminPanel(){
+  if(virtualAdminUsers['adminpanel']) return;
+  virtualAdminUsers['adminpanel'] = true;
+  // Listen to messages in adminroom
+  const adminRoomSub = drone.subscribe(ADMIN_ROOM);
+  adminRoomSub.on('data', (data, member)=>{
+    if(!member?.clientData) return;
+    const sender = member.clientData.username;
+    const msg = data.content.trim();
+    if(!isAdmin(sender)) return;
+    // Admin commands
+    if(msg.startsWith('.tempban ')){
+      const target = msg.slice(9).trim();
+      tempbanUser(target);
+    } else if(msg.startsWith('.untempban ')){
+      const target = msg.slice(11).trim();
+      if(tempbannedUsers[target]){
+        delete tempbannedUsers[target];
+        addSystemMessage(`${target} has been untempbanned.`);
+      }
+    }
+  });
+}
+
+// --- TEMPBAN SYSTEM ---
+function tempbanUser(target){
+  if(!target || tempbannedUsers[target]) return;
+  tempbannedUsers[target] = true;
+  addSystemMessage(`${target} has been tempbanned.`);
+  // Announce to adminroom as virtual fake user
+  drone.publish({ room:ADMIN_ROOM, message:{ type:'text', content:`tempban_${target}: user tempbanned` } });
 }
 
 // --- MESSAGE FUNCTIONS ---
 function addMessage(name,msg,data={}){ const el=document.createElement('div'); el.className='message'; el.innerHTML=`<span class="username" style="color:${data.color};font-family:${data.font}">${escapeHtml(name)}:</span> <span style="font-family:${data.font}">${escapeHtml(msg)}</span>`; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
 function addMessageHtml(name,html,data={}){ const el=document.createElement('div'); el.className='message'; el.innerHTML=`<span class="username" style="color:${data.color};font-family:${data.font}">${escapeHtml(name)}:</span> <span style="font-family:${data.font}">${html}</span>`; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
 
-// --- USER LIST UPDATE ---
-function updateUserList(){
-  const userlistEl=document.getElementById('userlist'); userlistEl.innerHTML='';
-  members.forEach(m=>{
-    const li=document.createElement('li');
-    const uname=m.clientData.username;
-    const style=m.id===clientId? 'color:red;font-weight:bold;' : `color:${m.clientData.color}`;
-    li.textContent=uname; li.style.cssText=style; userlistEl.appendChild(li);
-  });
-}
+// --- USER LIST ---
+function updateUserList(){ const userlistEl=document.getElementById('userlist'); userlistEl.innerHTML=''; members.forEach(m=>{ const li=document.createElement('li'); const uname=m.clientData.username; const style=m.id===clientId? 'color:red;font-weight:bold;':`color:${m.clientData.color}`; li.textContent=uname; li.style.cssText=style; userlistEl.appendChild(li); }); }
 
 // --- INPUT HANDLER ---
 input.addEventListener('keydown', e=>{
@@ -182,9 +156,6 @@ input.addEventListener('keydown', e=>{
   } else { drone.publish({ room:currentRoom, message:{ type:'text', content:val } }); }
   input.value=''; privacyNote.classList.remove('shrink');
 });
-
-// --- FAKE USER ADMIN PANEL ---
-ensureAdminPanel();
 
 // --- PRIVACY NOTE FADE ---
 const inputEl=document.getElementById('input'); const privacyNote=document.getElementById('privacy-note'); let typingTimer;
