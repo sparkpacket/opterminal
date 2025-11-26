@@ -1,353 +1,196 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>sparkpacket's chat program</title>
-  <style>
-    body { margin:0; font-family:monospace; background:#000; color:#0f0; }
-    #chat { height:80vh; overflow-y:auto; padding:10px; border-bottom:1px solid #0f0; }
-    #users { padding:10px; border-bottom:1px solid #0f0; font-size:12px; }
-    #input { width:100%; padding:10px; background:#000; color:#0f0; border:none; font-family:monospace; font-size:14px; }
-    .system { color:gray; font-style:italic; }
-    .message { margin-bottom:5px; }
-    .username { font-weight:bold; }
-    .self { color:red !important; }
-  </style>
+<meta charset="UTF-8">
+<title>sparkpacket's chat program</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+body { margin:0; font-family:monospace; background:#000; color:#0f0; display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+#users { flex:0 0 auto; padding:10px; border-bottom:1px solid #0f0; font-size:12px; background:#000; }
+#userlist { display:block; list-style:none; padding:0; margin:0; }
+#chat { flex:1 1 auto; overflow-y:auto; padding:10px; border-bottom:1px solid #0f0; }
+#input-container { flex:0 0 auto; position:relative; background:#000; border-top:1px solid #0f0; padding:5px; }
+#privacy-note { position:absolute; top:-18px; right:10px; font-size:12px; color:#888; padding:2px 6px; pointer-events:none; transition:all 0.3s ease; }
+#privacy-note.shrink { opacity:0.5; transform:scale(0.85); }
+#input { width:100%; padding:10px; background:#000; color:#0f0; border:none; font-family:monospace; font-size:14px; }
+.system { color:gray; font-style:italic; }
+.message { margin-bottom:5px; }
+.username { font-weight:bold; }
+.self { color:red !important; }
+#discord-note { position:fixed; top:10px; right:10px; background-color:#2b2b2b; color:white; padding:6px 10px; border-radius:4px; font-size:13px; z-index:9999; box-shadow:0 0 5px rgba(0,0,0,0.5); }
+#discord-note a { color:#7289da; text-decoration:none; }
+#discord-note a:hover { text-decoration:underline; }
+</style>
 </head>
 <body>
-
 <div id="users"><ul id="userlist"></ul></div>
 <div id="chat"></div>
-  <div id="privacy-note">
-  This site uses localStorage (cookies) to store information.
+<div id="input-container">
+  <div id="privacy-note">This site uses localStorage (cookies) to store information.</div>
+  <input id="input" type="text" placeholder="Type a message..." autofocus autocomplete="off">
 </div>
-
-<input id="input" type="text" placeholder="Type a message..." autofocus autocomplete="off">
-
 <script src="https://cdn.scaledrone.com/scaledrone.min.js"></script>
 <script>
-  const ROOM_ID = 'YlACLLtfd8xkDp0D';
-  let currentRoom = 'observable-default';
-  const DEFAULT_NAME = 'unregistered';
+const ROOM_ID = 'YlACLLtfd8xkDp0D';
+let username = localStorage.getItem('username') || 'unregistered';
+let color = localStorage.getItem('color') || '#0f0';
+let font = localStorage.getItem('font') || 'monospace';
+let currentRoom = 'observable-default';
+let members = [];
+let clientId = null;
 
-  let username = localStorage.getItem('username') || DEFAULT_NAME;
-  let color = localStorage.getItem('color') || '#0f0';
-  let font = localStorage.getItem('font') || 'monospace';
+// --- TEMPBAN TRACKER ---
+let tempbannedUsers = {}; // { username: true }
+let fakeUsers = {};       // { username: Scaledrone instance for tempban/fake user }
 
-  function setUserSetting(type, value) {
-    if (type === 'name') localStorage.setItem('username', username = value);
-    if (type === 'color') localStorage.setItem('color', color = value);
-    if (type === 'font') localStorage.setItem('font', font = value);
-  }
+// --- UTILITY FUNCTIONS ---
+function isAdmin(name) {
+  const lower = name.toLowerCase();
+  return lower === 'fredoka' || lower.startsWith('sparkpacket ');
+}
 
-  const drone = new Scaledrone(ROOM_ID, { data: { username, color, font } });
-  let clientId = null;
-  let members = [];
+function escapeHtml(s) { return s.replace(/[&<"']/g, m=>({'&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#039;'}[m])); }
+function getTime() { return new Date().toLocaleTimeString(); }
+function addSystemMessage(msg) { const el = document.createElement('div'); el.className='system'; el.textContent='[SYSTEM] '+msg; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
+function displayRoomName(room) { return room.replace(/^observable-/,'').replace(/_/g,' '); }
 
-  drone.on('open', err => {
-    if (err) return console.error(err);
-    clientId = drone.clientId;
-  });
+// --- LOCAL STORAGE USER SETTINGS ---
+function setUserSetting(type,value){
+  if(type==='name'){ localStorage.setItem('username',value); username=value; }
+  if(type==='color'){ localStorage.setItem('color',value); color=value; }
+  if(type==='font'){ localStorage.setItem('font',value); font=value; }
+}
 
-  let room;
-  function subscribeToRoom(roomName) {
-    if (room) room.unsubscribe();
-    currentRoom = roomName;
-    room = drone.subscribe(currentRoom);
+// --- INIT DRONE ---
+const drone = new Scaledrone(ROOM_ID, { data:{ username, color, font } });
+drone.on('open', err => { if(err) return console.error(err); clientId = drone.clientId; });
 
-    room.on('open', err => { if (err) console.error(err); });
-    room.on('members', m => { members = m; updateUserList(); addSystemMessage(`Switched to ${displayRoomName(currentRoom)}`); });
-    room.on('member_join', m => { members.push(m); updateUserList(); addSystemMessage(`${getName(m)} joined at ${getTime()}`); });
-    room.on('member_leave', ({id}) => {
-      const i = members.findIndex(m => m.id === id);
-      if (i !== -1) addSystemMessage(`${getName(members[i])} left at ${getTime()}`);
-      members = members.filter(m => m.id !== id);
-      updateUserList();
-    });
-    room.on('data', (data, member) => {
-      if (!member) return;
-      if (data.type === 'html') addMessageHtml(getName(member), data.content, member.clientData);
-      else if (data.type === 'file') addFileMessage(getName(member), data, member.clientData);
-      else if (data.type === 'text') addMessage(getName(member), data.content, member.clientData);
-    });
-  }
-  subscribeToRoom(currentRoom);
+// --- ADMIN ROOM MIRROR ---
+const adminRoomName = 'observable_adminroom';
+const adminRedirectRoom = 'observable_adminroom0';
+let adminRoom = drone.subscribe(adminRoomName);
 
-  function getName(m) { return m.clientData?.username || DEFAULT_NAME; }
-  function getTime() { return new Date().toLocaleTimeString(); }
-
-  function addMessage(name, msg, data={}) {
-    const el = document.createElement('div');
-    el.className = 'message';
-    el.innerHTML = `<span class="username" style="color:${data.color};font-family:${data.font}">${escapeHtml(name)}:</span> <span>${escapeHtml(msg)}</span>`;
-    chat.appendChild(el); chat.scrollTop = chat.scrollHeight;
-  }
-
-  function addMessageHtml(name, html, data={}) {
-    const el = document.createElement('div');
-    el.className = 'message';
-    el.innerHTML = `<span class="username" style="color:${data.color};font-family:${data.font}">${escapeHtml(name)}:</span> ${html}`;
-    chat.appendChild(el); chat.scrollTop = chat.scrollHeight;
-  }
-
-  function addFileMessage(name, data, clientData={}) {
-    const el = document.createElement('div');
-    el.className = 'message';
-    const label = `<span class="username" style="color:${clientData.color};font-family:${clientData.font}">${escapeHtml(name)}:</span> `;
-    const { fileName, fileType, fileData } = data;
-
-    let content;
-    if (fileType.startsWith('image/')) {
-      content = `<img src="${fileData}" alt="${escapeHtml(fileName)}" style="max-width:200px;max-height:200px;border:1px solid #0f0;margin-top:4px;">`;
-    } else if (fileType.startsWith('video/')) {
-      content = `<video controls style="max-width:250px;max-height:200px;margin-top:4px;"><source src="${fileData}" type="${fileType}"></video>`;
-    } else {
-      content = `<a href="${fileData}" download="${escapeHtml(fileName)}" style="color:#0ff;">${escapeHtml(fileName)}</a>`;
+// Ensure adminpanel fake user exists
+function ensureAdminPanel() {
+  if(fakeUsers['adminpanel']) return;
+  const fakeAdminPanel = new Scaledrone(ROOM_ID, { data:{ username:'adminpanel', color:'#f0f', font:'monospace' }});
+  fakeUsers['adminpanel'] = fakeAdminPanel;
+  const room = fakeAdminPanel.subscribe(adminRoomName);
+  room.on('data',(data,member)=>{
+    if(!data.type || !data.content) return;
+    const msg = data.content.trim();
+    if(msg.startsWith('.tempban ')){
+      const target = msg.slice(9).trim();
+      if(!target) return;
+      tempbanUser(target);
+    } else if(msg.startsWith('.untempban ')){
+      const target = msg.slice(11).trim();
+      if(fakeUsers['tempban_'+target]) {
+        fakeUsers['tempban_'+target].close(); delete fakeUsers['tempban_'+target]; delete tempbannedUsers[target];
+        addSystemMessage(`${target} has been untempbanned.`);
+      }
     }
-
-    el.innerHTML = label + content;
-    chat.appendChild(el);
-    chat.scrollTop = chat.scrollHeight;
-  }
-
-  function addSystemMessage(txt) {
-    const el = document.createElement('div');
-    el.className = 'system';
-    el.textContent = `[SYSTEM] ${txt}`;
-    chat.appendChild(el);
-    chat.scrollTop = chat.scrollHeight;
-  }
-
-  function displayRoomName(r) { return r.replace(/^observable-/, '').replace(/_/g, ' '); }
-
-  function escapeHtml(s) {
-    return s.replace(/[&<"']/g, m => ({
-      '&':'&amp;','<':'&lt;','"':'&quot;',"'":'&#039;'
-    }[m]));
-  }
-
-  function updateUserList() {
-    const list = document.getElementById("userlist");
-    list.innerHTML = "";
-    members.forEach(m => {
-      const li = document.createElement("li");
-      const isSelf = m.id === clientId;
-      li.style = `color:${isSelf ? 'red' : m.clientData.color};font-family:${m.clientData.font}`;
-      li.textContent = m.clientData.username || DEFAULT_NAME;
-      list.appendChild(li);
-    });
-  }
-
-  const input = document.getElementById("input");
-  const chat = document.getElementById("chat");
-  const privacyNote = document.getElementById("privacy-note");
-
-  input.addEventListener('keydown', e => {
-    if (e.key !== 'Enter') return;
-    const val = input.value.trim();
-    if (!val) return;
-
-    if (val.startsWith('/')) handleCommand(val);
-    else drone.publish({ room: currentRoom, message: { type:'text', content:val } });
-    input.value = '';
-    privacyNote.classList.remove("shrink");
   });
+}
 
-  function handleCommand(val) {
-    const [cmd, ...args] = val.slice(1).split(' ');
-    const arg = args.join(' ').trim();
-    switch(cmd) {
-      case 'name': if (arg){ setUserSetting('name', arg); location.reload(); } break;
-      case 'color': if (arg){ setUserSetting('color', arg); location.reload(); } break;
-      case 'font': if (arg){ setUserSetting('font', arg); location.reload(); } break;
+// --- TEMPBAN FUNCTION ---
+function tempbanUser(targetName){
+  if(!targetName) return;
+  if(tempbannedUsers[targetName]) return;
+  const targetMember = members.find(m=>m.clientData?.username===targetName);
+  let colorValue = '#888';
+  if(targetMember) colorValue = targetMember.clientData.color || colorValue;
+
+  tempbannedUsers[targetName]=true;
+
+  // Create fake user
+  const fake = new Scaledrone(ROOM_ID, { data:{ username:'tempban_'+targetName, color:colorValue, font:'monospace'} });
+  fakeUsers['tempban_'+targetName] = fake;
+  const room = fake.subscribe(adminRoomName);
+  room.on('data',(data,member)=>{
+    if(!data.type || !data.content) return;
+    const msg = data.content.trim();
+    if(msg === `.untempban ${targetName}`){
+      fake.close(); delete fakeUsers['tempban_'+targetName]; delete tempbannedUsers[targetName];
+      addSystemMessage(`${targetName} has been untempbanned.`);
+    }
+  });
+  addSystemMessage(`${targetName} has been tempbanned.`);
+}
+
+// --- SUBSCRIBE FUNCTION ---
+let room = drone.subscribe(currentRoom);
+function subscribeToRoom(roomName){
+  if(room) room.unsubscribe();
+  currentRoom = roomName;
+
+  // REDIRECT CHECK
+  if(roomName===adminRoomName && !isAdmin(username)) roomName = adminRedirectRoom;
+
+  room = drone.subscribe(roomName);
+  room.on('open', err=>{ if(err) console.error(err); });
+  room.on('members', m=>{ members=m; updateUserList(); addSystemMessage(`Switched to room: ${displayRoomName(currentRoom)}`); });
+  room.on('member_join', m=>{ members.push(m); updateUserList(); addSystemMessage(`${m.clientData.username} joined at ${getTime()}`); });
+  room.on('member_leave', ({id})=>{ const i=members.findIndex(x=>x.id===id); if(i!==-1){ addSystemMessage(`${members[i].clientData.username} left at ${getTime()}`); members.splice(i,1);} updateUserList(); });
+  room.on('data', (data,member)=>{
+    if(!member) return;
+    if(tempbannedUsers[member.clientData?.username]) return; // blocked if tempbanned
+    if(data.type==='text') addMessage(member.clientData.username, data.content, member.clientData);
+    else if(data.type==='html') addMessageHtml(member.clientData.username, data.content, member.clientData);
+
+    // FORK TO ADMINROOM
+    if(adminRoomName!==currentRoom) adminRoom.publish({ room:adminRoomName, message:{ type:'text', content:`[${displayRoomName(currentRoom)}] ${member.clientData.username}: ${data.content}` } });
+  });
+}
+
+// --- MESSAGE FUNCTIONS ---
+function addMessage(name,msg,data={}){ const el=document.createElement('div'); el.className='message'; el.innerHTML=`<span class="username" style="color:${data.color};font-family:${data.font}">${escapeHtml(name)}:</span> <span style="font-family:${data.font}">${escapeHtml(msg)}</span>`; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
+function addMessageHtml(name,html,data={}){ const el=document.createElement('div'); el.className='message'; el.innerHTML=`<span class="username" style="color:${data.color};font-family:${data.font}">${escapeHtml(name)}:</span> <span style="font-family:${data.font}">${html}</span>`; chat.appendChild(el); chat.scrollTop=chat.scrollHeight; }
+
+// --- USER LIST UPDATE ---
+function updateUserList(){
+  const userlistEl=document.getElementById('userlist'); userlistEl.innerHTML='';
+  members.forEach(m=>{
+    const li=document.createElement('li');
+    const uname=m.clientData.username;
+    const style=m.id===clientId? 'color:red;font-weight:bold;' : `color:${m.clientData.color}`;
+    li.textContent=uname; li.style.cssText=style; userlistEl.appendChild(li);
+  });
+}
+
+// --- INPUT HANDLER ---
+input.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  const val=input.value.trim();
+  if(!val){ input.value=''; return; }
+  if(tempbannedUsers[username]){ addSystemMessage('You are tempbanned.'); input.value=''; return; }
+
+  if(val.startsWith('/')){
+    const [cmd,...args]=val.slice(1).split(' '); const arg=args.join(' ').trim();
+    switch(cmd){
+      case 'name': if(arg){ setUserSetting('name',arg); location.reload(); } break;
+      case 'color': if(arg){ setUserSetting('color',arg); location.reload(); } break;
+      case 'font': if(arg){ setUserSetting('font',arg); location.reload(); } break;
+      case 'html': if(arg) drone.publish({ room:currentRoom, message:{ type:'html', content:arg } }); break;
       case 'clear': chat.innerHTML=''; break;
-      case 'html': if (arg){ drone.publish({ room: currentRoom, message:{type:'html', content:arg}});} break;
-      case 'room': if (arg){ subscribeToRoom('observable-' + arg.replace(/\s+/g,'_')); } break;
+      case 'help': addSystemMessage('Commands: /name, /color, /font, /html, /clear, /help, /room, /default, /hub'); break;
+      case 'hub': window.location.href='https://sparkpacket.github.io'; break;
+      case 'room': if(arg){ subscribeToRoom('observable-'+arg.replace(/\s+/g,'_')); } break;
       case 'default': subscribeToRoom('observable-default'); break;
-      case 'help': addSystemMessage('Commands: /name /color /font /html /clear /room /default'); break;
       default: addSystemMessage(`Unknown command: ${cmd}`);
     }
-  }
+  } else { drone.publish({ room:currentRoom, message:{ type:'text', content:val } }); }
+  input.value=''; privacyNote.classList.remove('shrink');
+});
 
-  // fade privacy note while typing
-  input.addEventListener("input", () => {
-    privacyNote.classList.toggle("shrink", input.value.trim().length > 0);
-  });
-  input.addEventListener("blur", () => privacyNote.classList.remove("shrink"));
+// --- FAKE USER ADMIN PANEL ---
+ensureAdminPanel();
 
-  // --- FILE UPLOAD SUPPORT ---
-  const inputContainer = document.getElementById("input-container");
-  const fileInput = document.createElement("input");
-  fileInput.type = "file";
-  fileInput.style.display = "none";
-  const fileButton = document.createElement("button");
-  fileButton.textContent = "upload";
-  fileButton.style.cssText = "background:none;border:none;color:#0f0;cursor:pointer;font-size:18px;position:absolute;left:10px;bottom:8px;";
-  inputContainer.appendChild(fileButton);
-  inputContainer.appendChild(fileInput);
-
-  // Adjust input padding for button
-  input.style.paddingLeft = "35px";
-
-  fileButton.addEventListener("click", () => fileInput.click());
-
-  fileInput.addEventListener("change", async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result;
-      drone.publish({
-        room: currentRoom,
-        message: {
-          type: 'file',
-          fileName: file.name,
-          fileType: file.type,
-          fileData: base64
-        }
-      });
-    };
-    reader.readAsDataURL(file);
-    fileInput.value = '';
-  });
+// --- PRIVACY NOTE FADE ---
+const inputEl=document.getElementById('input'); const privacyNote=document.getElementById('privacy-note'); let typingTimer;
+inputEl.addEventListener('input',()=>{ if(inputEl.value.trim().length>0){ privacyNote.classList.add('shrink'); clearTimeout(typingTimer); } else privacyNote.classList.remove('shrink'); });
+inputEl.addEventListener('blur',()=>{ privacyNote.classList.remove('shrink'); });
 </script>
-
-<style>
-#privacy-note {
-  position: fixed;
-  bottom: 10px;
-  left: 10px;
-  font-size: 12px;
-  color: #888;
-  background-color: rgba(0, 0, 0, 0);
-  padding: 4px 8px;
-  border-radius: 4px;
-  z-index: 1000;
-  pointer-events: none; /* Makes it non-interactive */
-}
-
-#discord-note {
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  background-color: #2b2b2b;
-  color: white;
-  padding: 6px 10px;
-  border-radius: 4px;
-  font-size: 13px;
-  z-index: 9999;
-  box-shadow: 0 0 5px rgba(0,0,0,0.5);
-}
-
-#discord-note a {
-  color: #7289da;
-  text-decoration: none;
-}
-
-#discord-note a:hover {
-  text-decoration: underline;
-}
-</style>
-<div id="discord-note">
-  <a href="https://discord.gg/kdwCbTjSvH" target="_blank">Join our Discord</a>
-</div>
-  <script>
-  // --- SPAI settings ---
-  const SPAI_NAME = "spai(sparkpacket ai)";
-  const SPAI_COLOR = "#6A287E";
-  const SPAI_ID = "spai";
-  const MARKOV_ORDER = 3; // 3-char sequences
-  const RESPONSE_DELAY = 1000 + Math.random() * 1500; // simulate typing
-
-  // --- corpus & Markov chain ---
-  let corpus = [];
-  let markovChain = {};
-
-  function loadCorpus() {
-    const saved = localStorage.getItem("spai_corpus");
-    if (saved) corpus = JSON.parse(saved) || [];
-    rebuildMarkovChain();
-  }
-
-  function saveCorpus() {
-    localStorage.setItem("spai_corpus", JSON.stringify(corpus));
-  }
-
-  function addMessageToCorpus(msg) {
-    if (!msg || msg.trim() === "") return;
-    corpus.push(msg);
-    saveCorpus();
-    updateMarkovChain(msg);
-    // optional: broadcast small snippet for shared learning
-    if (Math.random() < 0.1) { // 10% chance to broadcast
-      drone.publish({ room: currentRoom, message: { type: "spai_corpus", content: msg } });
-    }
-  }
-
-  function rebuildMarkovChain() {
-    markovChain = {};
-    corpus.forEach(msg => updateMarkovChain(msg));
-  }
-
-  function updateMarkovChain(msg) {
-    for (let i = 0; i <= msg.length - MARKOV_ORDER; i++) {
-      const key = msg.slice(i, i + MARKOV_ORDER);
-      const nextChar = msg.charAt(i + MARKOV_ORDER);
-      if (!markovChain[key]) markovChain[key] = [];
-      if (nextChar) markovChain[key].push(nextChar);
-    }
-  }
-
-  function generateText(seed, length = 50) {
-    if (corpus.length === 0) return "hmmm...";
-    let result = seed || corpus[Math.floor(Math.random() * corpus.length)].slice(0, MARKOV_ORDER);
-    while (result.length < length) {
-      const key = result.slice(-MARKOV_ORDER);
-      const nextChars = markovChain[key];
-      if (!nextChars || nextChars.length === 0) break;
-      const nextChar = nextChars[Math.floor(Math.random() * nextChars.length)];
-      result += nextChar;
-    }
-    return result;
-  }
-
-  // --- SPAI join & listening ---
-  function joinAsSPAI() {
-    // Immediately set SPAI info
-    drone.publish({ room: currentRoom, message: { type: 'text', content: `/name ${SPAI_NAME}` } });
-    drone.publish({ room: currentRoom, message: { type: 'text', content: `/color ${SPAI_COLOR}` } });
-
-    // Listen to all messages
-    room.on('data', (data, member) => {
-      if (!member) return;
-
-      // Learning: save all human messages
-      if (member.clientData.username !== SPAI_NAME) {
-        addMessageToCorpus(data.content);
-      }
-
-      // Handle SPAI commands
-      if (data.content.startsWith(".spai") && member.clientData.username !== SPAI_NAME) {
-        const userSeed = data.content.slice(5).trim();
-        if (!userSeed) return;
-        setTimeout(() => {
-          const reply = generateText(userSeed);
-          drone.publish({ room: currentRoom, message: { type: "text", content: reply } });
-          addMessageToCorpus(reply);
-        }, RESPONSE_DELAY);
-      }
-
-      // Handle shared corpus from other SPAIs
-      if (data.type === "spai_corpus" && member.clientData.username !== SPAI_NAME) {
-        addMessageToCorpus(data.content);
-      }
-    });
-  }
-
-  // --- initialization ---
-  loadCorpus();
-  setTimeout(joinAsSPAI, 1000);
-</script>
-
+<div id="discord-note"><a href="https://discord.gg/kdwCbTjSvH" target="_blank">Join our Discord</a></div>
 </body>
 </html>
