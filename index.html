@@ -340,6 +340,75 @@
           if (arg) return addSystemMessage('Usage: /default. Nothing else.');
           subscribeToRoom('observable-default');
           break;
+          case 'image':
+  case 'image': {
+  if (!arg) return addSystemMessage('Usage: /image <image_url>');
+  const url = escapeHtml(arg);
+  const html = `
+    <img src="${url}"
+         style="max-width:100%; height:auto; border:1px solid #0f0; border-radius:4px;">
+  `;
+  drone.publish({ room: currentRoom, message:{ type:'html', content:html } });
+  break;
+}
+
+case 'gif': {
+  if (!arg) return addSystemMessage('Usage: /gif <gif_url>');
+  const url = escapeHtml(arg);
+  const html = `
+    <img src="${url}"
+         style="max-width:100%; height:auto; border:1px solid #0f0; border-radius:4px;">
+  `;
+  drone.publish({ room: currentRoom, message:{ type:'html', content:html } });
+  break;
+}
+
+case 'video': {
+  if (!arg) return addSystemMessage('Usage: /video <video_url>');
+  const url = escapeHtml(arg);
+  const html = `
+    <video controls
+           style="max-width:100%; height:auto; border:1px solid #0f0; border-radius:4px;">
+      <source src="${url}">
+      Your browser does not support video tags.
+    </video>
+  `;
+  drone.publish({ room: currentRoom, message:{ type:'html', content:html } });
+  break;
+}
+
+case 'embed': {
+  if (!arg) return addSystemMessage('Usage: /embed <iframe_url>');
+  const url = escapeHtml(arg);
+  const html = `
+    <iframe src="${url}"
+            style="width:100%; height:400px; border:1px solid #0f0; border-radius:4px;"
+            allowfullscreen></iframe>
+  `;
+  drone.publish({ room: currentRoom, message:{ type:'html', content:html } });
+  break;
+}
+
+case 'yt': {
+  if (!arg) return addSystemMessage('Usage: /yt <YouTube_link_or_ID>');
+  
+  let id = arg;
+  // Extract ID from full YouTube links
+  const match = arg.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]+)/);
+  if (match) id = match[1];
+
+  const html = `
+    <iframe 
+      src="https://www.youtube.com/embed/${id}"
+      style="width:100%; aspect-ratio:16/9; border:1px solid #0f0; border-radius:4px;"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowfullscreen>
+    </iframe>
+  `;
+  
+  drone.publish({ room: currentRoom, message:{ type:'html', content:html } });
+  break;
+}
         default:
           addSystemMessage(`Unknown command: ${cmd}`);
       }
